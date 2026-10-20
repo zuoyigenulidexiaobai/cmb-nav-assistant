@@ -77,7 +77,7 @@ scp -r server dist seed-data.json package.json deploy \
 
 | 变量 | 说明 | 默认 |
 |---|---|---|
-| `CMB_NAV_API_BASE` | **必填**。数据源接口基地址 | — |
+| `CMB_NAV_API_BASE` | **必填**。招商银行净值接口基地址（目前仅支持招行） | — |
 | `CMB_NAV_APP_ID` | **必填**。接口 appId | — |
 | `CMB_NAV_AUTH_KEY` | **必填**。接口签名密钥 | — |
 | `CMB_NAV_BUSINESS_ID` | **必填**。接口业务标识 | — |
@@ -95,7 +95,8 @@ scp -r server dist seed-data.json package.json deploy \
 
 ### 数据源参数的注入方式
 
-四个 `CMB_NAV_*` 数据源参数都是**必填**（仓库内不含明文凭据）。两种注入方式任选其一：
+四个 `CMB_NAV_*` 数据源参数都是**必填**（仓库内不含明文凭据），且**仅适用于招商银行接口**——
+本项目不做多银行适配，接入其他银行需替换 `server/cmb.js` 的适配层。两种注入方式任选其一：
 
 **方式 A（推荐）**：写进独立的 env 文件，systemd 只读这一个文件，仓库目录里不落配置：
 
