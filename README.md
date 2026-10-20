@@ -211,8 +211,7 @@ annualized = 0.02797700440093087
 
 ```mermaid
 flowchart LR
-    B["浏览器 / 手机"] -->|HTTP| N["nginx<br/>可选反向代理"]
-    N -->|proxy_pass<br/>127.0.0.1:9001| A["Node 单进程<br/>server/index.js"]
+    B["浏览器 / 手机"] -->|HTTP| A["Node 单进程<br/>server/index.js"]
 
     subgraph A["Node 进程（零 npm 依赖）"]
         direction TB
@@ -229,7 +228,7 @@ flowchart LR
 
 | 层 | 选择 | 理由 |
 | --- | --- | --- |
-| 后端 | `node:http` / `node:sqlite` / `node:crypto` / `node:https` | 零依赖 = 零供应链风险、部署只需 `node` |
+| 后端 | `node:http` / `node:sqlite` / `node:crypto` / `node:https` | 零依赖 = 零供应链风险，运行只要 `node` |
 | 前端 | Vite 5 + React 18 | 构建产物由同一进程托管，同源无跨域 |
 | 样式 | Tailwind 3 + MUI 5（克制使用） | 布局用 Tailwind，对话框/表单用 MUI |
 | 图表 | Recharts | 叠加折线、图例点选，够用且轻 |
@@ -308,7 +307,7 @@ type AppState = {
 ## 配置
 
 优先级：**真实进程环境 > `.env` > 代码默认值**。
-服务器上推荐用 systemd `EnvironmentFile=/etc/cmb-nav.env`，配置文件就不必落在仓库目录里。
+本地把 `.env.example` 复制成 `.env` 填好即可，`.env` 已被 `.gitignore` 排除。
 
 | 变量 | 必填 | 默认 | 说明 |
 | --- | :---: | --- | --- |
@@ -317,8 +316,8 @@ type AppState = {
 | `CMB_NAV_AUTH_KEY` | ✅ | — | 接口签名密钥（SM4/ECB） |
 | `CMB_NAV_BUSINESS_ID` | ✅ | — | 接口业务标识 |
 | `PORT` | | `9001` | 监听端口 |
-| `HOST` | | `0.0.0.0` | 监听地址；前置 nginx 时应为 `127.0.0.1` |
-| `TRUST_PROXY` | | 关 | 置 `1` 信任反代写入的 `X-Real-IP`（前置 nginx 必须开） |
+| `HOST` | | `0.0.0.0` | 监听地址 |
+| `TRUST_PROXY` | | 关 | 置 `1` 时信任 `X-Real-IP` 等代理头；无代理时保持关闭 |
 | `DATA_DIR` | | `<root>/data` | SQLite 与 `auth.json` 所在目录 |
 | `DIST_DIR` | | `<root>/dist` | 前端产物目录 |
 | `CMB_NAV_PASSWORD` | | 随机生成 | 首次启动口令，仅在无 `auth.json` 时生效 |
@@ -334,23 +333,6 @@ type AppState = {
 
 ---
 
-## 部署到自己的服务器
-
-```
-浏览器 → nginx(80/443) → 127.0.0.1:9001 (Node，只监听回环)
-```
-
-`deploy/` 目录里给了可直接用的 `systemd` unit 与 nginx 反代配置。三个容易踩的点：
-
-1. **Node 只监听回环**，对外统一走 nginx——Node 不碰特权端口；
-2. **必须开 `TRUST_PROXY=1`**，否则所有请求都被当成同一个 IP，登录节流会误锁全局；
-3. nginx 要用 `proxy_set_header X-Real-IP $remote_addr` **覆写**该头（示例已写好），
-   否则客户端自带值可伪造 IP 绕过限流。
-
-详细步骤、备份与升级流程见 [`deploy/README.md`](./deploy/README.md)。
-
----
-
 ## 安全设计（单人自用的合理强度）
 
 | 面 | 做法 |
@@ -359,11 +341,11 @@ type AppState = {
 | 会话 | `HMAC-SHA256` 签名的 token 装进 HttpOnly Cookie，30 天有效 |
 | 暴力破解 | 按 IP 计连续失败，5 次锁 5 分钟；失败响应加 300ms 延迟抬高成本 |
 | 路径穿越 | 静态托管做 `path.relative` 根目录校验，`..` 无法越界 |
-| 请求体积 | 上限 1MB（nginx 侧批量导入单独放宽） |
+| 请求体积 | 上限 1MB |
 | 凭据管理 | 仓库内零明文，全部走环境变量 |
 
-> 这是**单人自用**的强度，不是多租户产品：没有用户体系、没有 CSRF token、纯 HTTP 部署时 Cookie 不带 `Secure`。
-> 上 HTTPS 后建议自行在 `buildSessionCookie` 里补上。
+> 这是**单人自用**的强度，不是多租户产品：没有用户体系、没有 CSRF token、
+> 会话 Cookie 不带 `Secure` 标记（纯 HTTP 环境下需要这样）。
 
 ---
 
@@ -438,7 +420,6 @@ cmb-nav-assistant/
 │   ├── hooks/usePortfolio.js  #   全局状态 + 抓取轮询收敛
 │   ├── views/                 #   5 个页面
 │   └── components/            #   表格 / 对话框 / 走势图 / 登录门
-├── deploy/                    # systemd unit + nginx 配置 + 部署手册
 ├── docs/                      # README 配图（SVG）
 ├── .env.example               # 环境变量样例
 └── seed-data.json             # 种子数据（空模板）
