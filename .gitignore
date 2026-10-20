@@ -1,0 +1,31 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+.vite
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 本地环境变量（含数据源参数与初始口令），只保留样例文件
+.env
+.env.*
+!.env.example
+
+# 运行时数据（SQLite 库、auth.json）与日志
+data/
+logs/
+*.log
+*.db
+*.db-wal
+*.db-shm
+
+# 本地临时验证产物
+cookies.txt
+
+# 本地 QA / 验收产物（不入库）
+qa/
+qa-screenshots*/
+_qa_*.mjs
+TEST-REPORT*.md

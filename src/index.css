@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: #141b2d;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f8fc 46%, #edf3fb 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 滚动条（浅色） */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: #c8d4e4;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #a9bad2;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl2 border border-line bg-white shadow-card;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold leading-none;
+  }
+  .pill-neutral {
+    @apply bg-slate-100 text-slate-600;
+  }
+  .pill-ok {
+    @apply bg-emerald-50 text-loss;
+  }
+  .pill-alert {
+    @apply bg-red-50 text-profit;
+  }
+  .pill-warn {
+    @apply bg-amber-50 text-warn;
+  }
+
+  .text-profit {
+    color: #d83a3a;
+  }
+  .text-loss {
+    color: #168355;
+  }
+  .text-muted {
+    color: #65738a;
+  }
+
+  .field-label {
+    @apply mb-1 block text-xs font-semibold text-muted;
+  }
+
+  .data-table {
+    @apply w-full border-collapse text-left text-sm;
+  }
+  .data-table thead th {
+    @apply whitespace-nowrap border-b border-line bg-slate-50/80 px-3 py-2.5 text-xs font-bold text-muted;
+  }
+  .data-table tbody td {
+    @apply border-b border-line px-3 py-2.5 align-middle;
+  }
+  .data-table tbody tr:hover {
+    background-color: #f8fbff;
+  }
+
+  .btn-ghost {
+    @apply whitespace-nowrap rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:border-brand-300 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-line disabled:hover:text-ink;
+  }
+  .btn-ghost-danger {
+    @apply whitespace-nowrap rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-profit transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white;
+  }
+}

@@ -1,0 +1,25 @@
+[Unit]
+Description=CMB Nav Assistant
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/cmb-nav
+Environment=NODE_ENV=production
+# 只监听回环地址：对外一律经 nginx 反代进入，Node 不直接暴露。
+Environment=HOST=127.0.0.1
+Environment=PORT=9001
+# 前面有 nginx，需要信任它覆写的 X-Real-IP，否则登录节流会把所有请求当成同一个来源。
+Environment=TRUST_PROXY=1
+Environment=DATA_DIR=/opt/cmb-nav/data
+# 注意：此路径需按目标机器的实际 node 位置调整（本机为 /usr/local/bin/node → node-v24.13.0）。
+ExecStart=/usr/local/bin/node server/index.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=append:/opt/cmb-nav/logs/app.log
+StandardError=append:/opt/cmb-nav/logs/app.log
+
+[Install]
+WantedBy=multi-user.target

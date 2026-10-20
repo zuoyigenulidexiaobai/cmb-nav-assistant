@@ -1,0 +1,29 @@
+{
+  "name": "cmb-nav-assistant",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "招行理财净值助手（网页版）— 本地化净值管理、年化收益率监控与持仓收益分析",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server/index.js",
+    "start:exp": "node --experimental-sqlite server/index.js"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
+    "@mui/material": "^5.15.20",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "vite": "^5.3.4"
+  }
+}
