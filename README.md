@@ -1,155 +1,238 @@
-# 招行理财净值助手（服务器版）
+<div align="center">
 
-把浏览器插件形态的「理财净值助手」重做成**前后端一体**的网页版：一个 Node 进程（**零 npm 依赖**）
-同时托管前端页面与 `/api/*`，数据落在服务器 **SQLite**（`node:sqlite`），多设备访问同一地址共享同一份数据；
-净值抓取放在服务端完成（浏览器跨域限制在服务端不再存在），并支持每天定时抓取、启动补抓与失败自动重试。
+# 理财净值助手 · 服务器版
 
-> ⚠️ **免责声明**：本项目为个人学习与自建自用工具，与任何金融机构无关，不构成投资建议。
-> 数据源需要调用方自行准备接口参数（见「配置」一节），仓库内不包含任何第三方凭据。
-> 抓取频率请自觉控制，勿对第三方服务造成压力。
+**把自己的理财净值监控，从「每天手点一遍」变成「每天 9 点准时躺到手机里」。**
 
----
+一个零依赖的 Node 服务 + 一套 React 界面，跑在你自己的服务器上，
+定时抓取、自动补抓、失败重试、多设备共享同一份数据。
 
-## 特性
+[![Node](https://img.shields.io/badge/Node-22%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![Backend Deps](https://img.shields.io/badge/后端依赖-0-00A86B)](#为什么后端零依赖)
+[![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![License](https://img.shields.io/badge/License-MIT-blue)](./LICENSE)
 
-- **单端口同源**：后端同时提供静态页面与 API，无跨域、无额外 web server
-- **零 npm 依赖的后端**：只用 `node:http` / `node:sqlite` / `node:crypto` / `node:https`
-- **单用户口令认证**：scrypt 派生哈希 + HMAC 签名会话 Cookie + 按 IP 的登录节流
-- **定时抓取**：每天固定时刻（默认 09:00 Asia/Shanghai）抓取全部监控中产品
-- **启动补抓**：服务启动时若今日定时抓取还没成功跑过，立即补一轮（重启不会重复补）
-- **失败自动重试**：仅对失败的产品重试，默认 5 分钟、10 分钟两轮；等待期间不占用抓取锁
-- **手动与自动互不覆盖**：同日期已存在手动录入的净值点，自动抓取不会覆盖
-- **年化算法纯函数化**：近 1/2/4 周年化、应披露日（上一工作日）、持仓收益与当日收益估算
+</div>
 
 ---
 
-## 快速开始
+## 你是不是也这样看理财
 
-需要 **Node 22+**（`node:sqlite` 要求；Node 22 需加 `--experimental-sqlite`，Node 24 起内置稳定）。
+> 早上想起来，打开 App，一个个产品点进去看净值，拿计算器算年化，
+> 再想想「这个是不是已经跌破我设的线了」……第二天，重复一遍。
+
+产品一多就没法维护，更别说发现**哪只悄悄掉队了**。而浏览器插件方案又会撞上一堵墙：
+数据源接口不允许跨域，浏览器里根本发不出请求。
+
+这个项目解决的就是这两件事——**抓取搬到服务端**，**判断交给程序**，你只看结论。
+
+<br>
+
+<table>
+<tr>
+<td width="50%">
+
+**❌ 以前**
+
+- 逐个产品点开，手动抄净值
+- 自己按日期找基准点算年化
+- 忘了哪只该披露却没更新
+- 电脑上录的数据，手机上还得再来一遍
+
+</td>
+<td width="50%">
+
+**✅ 现在**
+
+- 每天 09:00 自动抓全部监控中产品
+- 近 1/2/4 周年化自动算，带基准日与天数
+- 「未更新」自动标红，跌破阈值自动置顶
+- 电脑、手机、平板访问同一个地址，数据同一份
+
+</td>
+</tr>
+</table>
+
+---
+
+## 界面预览
+
+<table>
+<tr>
+<td align="center" width="50%">
+
+<img src="./docs/preview-dashboard.svg" alt="概览页：警示条、4 张指标卡、产品收益卡片" width="100%">
+
+**概览** — 一眼看清「谁掉队了」
+
+</td>
+<td align="center" width="50%">
+
+<img src="./docs/preview-trend.svg" alt="净值走势：多产品叠加折线，涨红跌绿" width="100%">
+
+**走势** — 多产品叠加，涨红跌绿
+
+</td>
+</tr>
+</table>
+
+> 示意图按真实版式绘制，数据为虚构示例。
+
+---
+
+## 30 秒跑起来
 
 ```bash
-# 1) 安装前端依赖
-npm install
+git clone https://github.com/zuoyigenulidexiaobai/cmb-nav-assistant.git
+cd cmb-nav-assistant
 
-# 2) 准备配置（数据源参数 + 可选的服务端参数）
-cp .env.example .env
-#   编辑 .env，至少填 CMB_NAV_API_BASE / APP_ID / AUTH_KEY / BUSINESS_ID
-
-# 3) 启动后端（同时托管 dist/ 与 /api）
-npm run build
-node server/index.js
-
-# 开发态：前端 5173（已把 /api 代理到 127.0.0.1:9001）
-npm run dev
+npm install                                  # 只有前端依赖
+cp .env.example .env                         # 填 4 个数据源参数
+npm run build && node server/index.js        # 打开 http://127.0.0.1:9001
 ```
 
-打开 `http://127.0.0.1:9001`，用启动日志里打印的初始登录口令登录
-（也可以先在 `.env` 里设 `CMB_NAV_PASSWORD` 指定）。首次登录后可在「数据管理」页导入内置种子数据、
-批量粘贴产品代码，或直接点「抓取最新净值」。
+启动日志里会打印一条初始登录口令，用它登录即可。
+**不需要数据库、不需要 Docker、不需要 Redis**——SQLite 就在 `data/` 里。
 
 ---
 
-## 配置
+## 三个「你以为要自己盯」的地方，它替你盯着
 
-环境变量优先级：**真实进程环境 > 项目根目录 `.env` > 代码内默认值**。
-`.env` 已被 `.gitignore` 排除；服务器上推荐用 systemd `Environment=` / `EnvironmentFile=` 注入，
-这样配置文件不必落在仓库目录里。
-
-| 变量 | 必填 | 默认 | 说明 |
-| --- | --- | --- | --- |
-| `CMB_NAV_API_BASE` | ✅ | — | 净值接口基地址 |
-| `CMB_NAV_APP_ID` | ✅ | — | 接口 appId |
-| `CMB_NAV_AUTH_KEY` | ✅ | — | 接口签名密钥 |
-| `CMB_NAV_BUSINESS_ID` | ✅ | — | 接口业务标识 |
-| `PORT` | | `9001` | HTTP 监听端口 |
-| `HOST` | | `0.0.0.0` | 监听地址；前置 nginx 时应为 `127.0.0.1` |
-| `TRUST_PROXY` | | 关 | 置 `1` 时信任反代写入的 `X-Real-IP`（前置 nginx 必须开） |
-| `PROXY_IP_HEADER` | | `x-real-ip` | 反代传递真实客户端 IP 的请求头名 |
-| `DATA_DIR` | | `<root>/data` | 运行时数据目录（SQLite 库 + `auth.json`） |
-| `DIST_DIR` | | `<root>/dist` | 前端构建产物目录 |
-| `CMB_NAV_PASSWORD` | | 随机生成 | 首次启动的初始登录口令，仅在无 `auth.json` 时生效 |
-| `CMB_NAV_TZ` | | `Asia/Shanghai` | 定时任务时区标识（展示与日志用） |
-| `CMB_NAV_SCHEDULE_HOUR` | | `9` | 定时抓取小时（0–23） |
-| `CMB_NAV_SCHEDULE_MINUTE` | | `0` | 定时抓取分钟（0–59） |
-| `CMB_NAV_RETRY_DELAY_MS` | | `300000,600000` | 失败重试延迟列表（毫秒，逗号分隔），长度即重试轮数 |
-
-> 四个数据源变量缺任意一个，服务仍可启动（录入、查看、统计等本地功能正常），
-> 只在触发抓取 / 产品名同步时返回可读的失败原因，提示缺哪几个变量。
-
----
-
-## 技术栈
-
-- **后端**：Node 内置模块（`node:http` / `node:sqlite` / `node:crypto` / `node:https`），零 npm 依赖
-- **前端**：Vite 5 + React 18（函数组件 + Hooks）
-- **MUI 5**（对话框、表单控件、Snackbar，用量克制）+ **Tailwind CSS 3**（主体布局与设计令牌）
-- **Recharts**（净值走势图）
-
----
-
-## 目录结构
+### ① 定时抓取：不是「设个闹钟」，是真的会补齐
 
 ```
-cmb-nav-assistant/
-├── index.html
-├── package.json
-├── vite.config.js                 # 含开发态 /api 代理 → 127.0.0.1:9001
-├── tailwind.config.js
-├── postcss.config.js
-├── .env.example                   # 环境变量样例（复制为 .env）
-├── seed-data.json                 # 种子数据模板（仓库内为空，可自行填写）
-├── server/                        # 后端（零 npm 依赖）
-│   ├── index.js                   # HTTP 服务 + 路由分发 + 静态托管（含防路径穿越）
-│   ├── db.js                      # SQLite 封装（node:sqlite）+ schema 初始化与幂等迁移
-│   ├── auth.js                    # scrypt 口令 + HMAC 会话 token + Cookie + 登录节流
-│   ├── cmb.js                     # 数据源客户端（SM4/ECB 签名）
-│   ├── scheduler.js               # 定时抓取 + 启动补抓 + 失败重试（全局互斥）
-│   └── config.js                  # 环境变量 / .env 解析与路径解析
-├── deploy/                        # 部署物料
-│   ├── cmb-nav.service            # systemd unit
-│   └── cmb-nav.nginx.conf         # nginx 反代示例（含 HTTPS 段注释）
-└── src/
-    ├── main.jsx                   # 入口：ThemeProvider + PortfolioProvider + LoginGate
-    ├── App.jsx                    # 视图切换 + 全局提示
-    ├── index.css                  # Tailwind 指令 + 基础样式
-    ├── theme.js                   # MUI 主题（浅色金融风）
-    ├── lib/
-    │   ├── holidays.js            # 工作日 / 节假日表
-    │   ├── netvalue.js            # 年化算法核心（纯函数）
-    │   ├── api.js                 # 后端 API 客户端（含 AuthError）
-    │   ├── storage.js             # 数据归一化 / JSON 序列化
-    │   ├── parser.js              # 代码 / 净值 / 持仓输入解析
-    │   └── format.js              # 展示格式化
-    ├── hooks/usePortfolio.js      # 组合数据状态 + Context（数据源为后端 /api/state）
-    ├── data/seed.js               # 种子数据封装（结构与填写方式见文件头注释）
-    ├── components/                # LoginGate / Layout / 表格 / 各类对话框 / 走势图
-    └── views/                     # Dashboard / NavManager / TrendView / HoldingsView / DataManager
+09:00  抓取全部监控中产品  →  成功 9/9
+09:05  有失败？只重抓失败的那几只（不打扰已成功的）
+09:15  还失败？再来一轮 —— 到此为止，不无限骚扰第三方接口
 ```
 
-运行时目录（`data/`、`dist/`、`logs/`）与 `.env` 均不进版本库。
+- 触发来源记在 `sync_log.trigger_kind`：`manual` / `schedule` / `catchup` / `retry`，事后可追溯
+- **重启不丢**：服务启动时若发现「已过今日抓取时刻、且今天还没成功跑过一次」，立即补抓一轮
+- **补抓幂等**：补抓成功后重启不会重复补
+- **手动与自动互不覆盖**：同日期你手动录的净值，自动抓取不会盖掉
+
+### ② 失败重试不占锁
+
+重试等待期间，抓取锁是**释放**的。你在等待窗口里点「立即抓取」，不会被卡住——
+这是很多定时任务实现里被忽略的细节。
+
+### ③ 「未更新」是按工作日算的
+
+应披露日 = **上一工作日**（排除周末与内置节假日表）。
+
+> 周六早上打开，它不会因为你「今天没数据」而报警；
+> 它会告诉你：该看的是周五那份。
 
 ---
 
-## 页面功能
+## 年化算法是纯函数，可以拿去单测
 
-1. **概览** — 顶部警示条（低于阈值 / 未更新 / 空状态）；4 张指标卡（监控产品数 / 已更新到披露日 / 低于阈值 / 未更新）；产品收益卡片网格（最新净值与日期、近 1/2/4 周年化含基准日与天数、状态标签）。
-2. **净值管理** — 表格（代码 / 名称 / 最新净值 / 净值日期 / 近 1/2/4 周 / 状态 / 操作）；批量勾选删除、归档与恢复；按状态筛选、按代码或名称搜索；页头可「抓取最新净值」（全部监控中）/「抓取选中」/「同步产品名」，行内可单独抓取。
-3. **净值走势** — 多产品叠加折线图，图例可点选，区间切换（近 1 月 / 3 月 / 6 月 / 全部）。**配色遵守国内习惯：区间内上涨为红色、下跌为绿色。**
-4. **持仓收益** — 录入每只产品的份额与成本净值，展示市值、持有收益、持有收益率、持有期年化、当日收益估算。
-5. **数据管理** — 立即抓取 / 导入导出 JSON / 导入种子数据 / 清空全部 / 阈值与提醒设置 / 退出登录。
+核心逻辑全在 `src/lib/netvalue.js`（208 行，零副作用），不依赖 React、不依赖 DOM：
+
+```js
+// 近 N 周收益率：基准点取 date <= (latest - N) 里最接近的那个
+const { base, actualDays } = findBasePoint(points, latest, 28);
+
+// 年化：按实际持有天数换算到 365 天
+const rate = annualized(latest.nav, base.nav, actualDays);
+// 0.02797700440093087
+```
+
+| 函数 | 规则 |
+| --- | --- |
+| `daysBetween(a, b)` | 整天数，`Date.UTC` 归一化后四舍五入 |
+| `findBasePoint(points, latest, N)` | 取 `date <= latest - N` 中日期最大的点，返回 `{ base, actualDays }` |
+| `annualized(latest, base, days)` | `(latest / base) ^ (365 / days) - 1`；`days <= 0` → `NaN` |
+| `isBusinessDay` / `previousBusinessDay` | 非周末且不在节假日表 |
+
+自检样例（可直接对照）：
+
+```
+最新 1.0399 @ 2026-07-23
+基准 1.0388 @ 2026-07-09   →  actualDays = 14
+annualized = 0.02797700440093087
+```
 
 ---
 
-## 数据结构（`GET /api/state`）
+## 架构：一个进程，零外部依赖
 
-SQLite 表：`products` / `nav_points` / `holdings` / `settings` / `sync_log`（详见 `server/db.js`）。
+```mermaid
+flowchart LR
+    B["浏览器 / 手机"] -->|HTTP| N["nginx<br/>可选反向代理"]
+    N -->|proxy_pass<br/>127.0.0.1:9001| A["Node 单进程<br/>server/index.js"]
+
+    subgraph A["Node 进程（零 npm 依赖）"]
+        direction TB
+        R["路由分发<br/>+ 静态托管"]
+        S["scheduler.js<br/>定时 / 补抓 / 重试"]
+        Q[("SQLite<br/>node:sqlite")]
+        R --- Q
+        S --- Q
+    end
+
+    S -->|SM4 签名 + HTTPS| D["数据源接口"]
+    R -->|HTML / JS / CSS| B
+```
+
+| 层 | 选择 | 理由 |
+| --- | --- | --- |
+| 后端 | `node:http` / `node:sqlite` / `node:crypto` / `node:https` | 零依赖 = 零供应链风险、部署只需 `node` |
+| 前端 | Vite 5 + React 18 | 构建产物由同一进程托管，同源无跨域 |
+| 样式 | Tailwind 3 + MUI 5（克制使用） | 布局用 Tailwind，对话框/表单用 MUI |
+| 图表 | Recharts | 叠加折线、图例点选，够用且轻 |
+| 存储 | SQLite 单文件 | 单人自用规模下，备份 = 拷一个文件 |
+
+**为什么后端零依赖？**
+这个服务会长期挂在公网、天天跑定时任务。少一个 `node_modules`，就少一次 `npm audit` 心慌，
+也少一次「三年后某依赖不再维护」的迁移。代价是 HTTP 与 SQLite 都要手写——所以代码里注释密度偏高。
+
+---
+
+## 功能清单
+
+| 页面 | 它解决什么 | 关键点 |
+| --- | --- | --- |
+| **概览** | 今天要不要处理？ | 警示条（低于阈值 / 未更新 / 空状态）+ 4 张指标卡 + 产品收益卡片（最新净值与日期、近 1/2/4 周年化） |
+| **净值管理** | 维护产品与净值 | 批量勾选删除、归档/恢复、状态下拉筛选、代码或名称搜索、批量粘贴代码、行内单抓 |
+| **净值走势** | 横向对比产品 | 多产品叠加、图例点选、区间切换（1/3/6 月或全部），**涨红跌绿** |
+| **持仓收益** | 我到底赚了多少 | 市值、持有收益、持有收益率、持有期年化、当日收益估算 |
+| **数据管理** | 数据进出与调参 | 立即抓取（含进度）、导出/导入 JSON、导入种子、清空全部、阈值与提醒开关 |
+
+抓取入口有三处，按需取用：页头「抓取最新净值」（全部监控中）/「抓取选中」/ 行内「抓取」。
+
+---
+
+## API 一览
+
+所有接口同源，认证走 HttpOnly Cookie。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/health` | 健康检查（无需登录） |
+| `POST` | `/api/auth/login` | 口令登录，下发会话 Cookie |
+| `POST` | `/api/auth/logout` | 退出登录 |
+| `GET` | `/api/auth/me` | 当前登录状态 |
+| `GET` | `/api/state` | 全量数据（产品 + 净值 + 持仓 + 设置） |
+| `POST` | `/api/products` | 批量新增产品（支持多代码粘贴） |
+| `PATCH` / `DELETE` | `/api/products/:code` | 改产品 / 删产品 |
+| `POST` | `/api/products/:code/nav` | 批量写入净值（同日期覆盖） |
+| `PUT` | `/api/holdings/:code` | 录入/修改持仓 |
+| `POST` | `/api/sync` | 触发抓取（全局互斥，可指定产品） |
+| `POST` | `/api/sync/names` | 同步产品名称 |
+| `GET` | `/api/sync/log` | 抓取历史（含触发来源） |
+| `POST` | `/api/import` | 导入 JSON / 种子数据 |
+| `PUT` | `/api/settings` | 阈值与提醒设置 |
+
+数据结构（`GET /api/state`）：
 
 ```ts
 type NavPoint = { date: string /* YYYY-MM-DD */; nav: number };
 
 type Product = {
   code: string;              // 唯一，统一大写
-  name: string;              // 可为空
+  name: string;
   note: string;
   active: boolean;           // true = 监控中；false = 归档
   holding: null | { shares: number; costNav: number };
@@ -169,99 +252,151 @@ type AppState = {
 };
 ```
 
-`sync_log` 记录每次抓取：`trigger_kind` 区分 `manual`（手动）/ `schedule`（定时）/ `catchup`（启动补抓）/ `retry`（失败重试）。
+---
+
+## 配置
+
+优先级：**真实进程环境 > `.env` > 代码默认值**。
+服务器上推荐用 systemd `EnvironmentFile=/etc/cmb-nav.env`，配置文件就不必落在仓库目录里。
+
+| 变量 | 必填 | 默认 | 说明 |
+| --- | :---: | --- | --- |
+| `CMB_NAV_API_BASE` | ✅ | — | 数据源接口基地址 |
+| `CMB_NAV_APP_ID` | ✅ | — | 接口 appId |
+| `CMB_NAV_AUTH_KEY` | ✅ | — | 接口签名密钥 |
+| `CMB_NAV_BUSINESS_ID` | ✅ | — | 接口业务标识 |
+| `PORT` | | `9001` | 监听端口 |
+| `HOST` | | `0.0.0.0` | 监听地址；前置 nginx 时应为 `127.0.0.1` |
+| `TRUST_PROXY` | | 关 | 置 `1` 信任反代写入的 `X-Real-IP`（前置 nginx 必须开） |
+| `DATA_DIR` | | `<root>/data` | SQLite 与 `auth.json` 所在目录 |
+| `DIST_DIR` | | `<root>/dist` | 前端产物目录 |
+| `CMB_NAV_PASSWORD` | | 随机生成 | 首次启动口令，仅在无 `auth.json` 时生效 |
+| `CMB_NAV_SCHEDULE_HOUR` | | `9` | 定时抓取小时（0–23） |
+| `CMB_NAV_SCHEDULE_MINUTE` | | `0` | 定时抓取分钟（0–59） |
+| `CMB_NAV_RETRY_DELAY_MS` | | `300000,600000` | 重试延迟列表（毫秒），元素个数 = 重试轮数 |
+
+> 缺数据源参数时服务**照常启动**，录入、查看、统计都能用；
+> 只在触发抓取时返回「缺少环境变量 …」的可读提示。这是刻意设计——不要让配置问题连带把本地功能一起打死。
 
 ---
 
-## 算法约定
-
-年化计算集中在 `src/lib/netvalue.js`（纯函数，可直接在 Node 里单测）：
-
-| 函数 | 规则 |
-| --- | --- |
-| `daysBetween(a, b)` | `(a - b)` 的整天数（`Date.UTC` 归一化后四舍五入） |
-| `findBasePoint(points, latest, days)` | `target = latest.date - days`，取 `date <= target` 中日期最大的点，返回 `{ base, actualDays }` |
-| `annualized(latest, base, actualDays)` | `Math.pow(latest / base, 365 / actualDays) - 1`；`actualDays <= 0` → `NaN` |
-| `PERIODS` | 近 1 周 / 2 周 / 4 周 = 7 / 14 / 28 天 |
-| `isBusinessDay` / `previousBusinessDay` | 非周六日且不在节假日表；**应披露日 = 上一工作日** |
-
-自检样例（可直接对照）：
-
-```
-latestNav = 1.0399 @ 2026-07-23
-baseNav   = 1.0388 @ 2026-07-09
-actualDays = 14
-→ annualized = 0.02797700440093087
-```
-
-非工作日不再「跳过查询」：始终计算并展示，只用 `businessDay` 标记今日是否为工作日，
-应披露日仍取上一工作日，因此任意时间打开都能看到数据。
-
----
-
-## 输入格式
-
-- **产品代码**：按 `[,\uFF0C\n\r\t;；\s]+` 切分 → 去空格 → 转大写 → 去重 → 过滤已存在。
-- **批量净值**：每行一条，支持 `<tab>` `,` `，` 空格；格式 `日期 净值`（兼容 `代码 日期 净值`）。
-  - 日期接受 `YYYY-MM-DD`、`YYYYMMDD`、`YYYY/MM/DD`；净值接受小数。
-  - 解析失败的行**逐行报错**，有效行照常保存，不整体失败。
-- **同一产品同日期 → 覆盖旧值**；历史始终按日期升序保存。
-- 删除、清空等危险操作均需二次确认。
-
----
-
-## 部署
-
-`deploy/` 下提供了 systemd unit 与 nginx 反代示例，典型拓扑：
+## 部署到自己的服务器
 
 ```
 浏览器 → nginx(80/443) → 127.0.0.1:9001 (Node，只监听回环)
 ```
 
-要点：
+`deploy/` 目录里给了可直接用的 `systemd` unit 与 nginx 反代配置。三个容易踩的点：
 
-1. Node 只监听回环（`HOST=127.0.0.1`），对外统一经 nginx；
-2. 必须开启 `TRUST_PROXY=1`，否则登录节流会把所有请求当成同一个来源；
-3. nginx 用 `proxy_set_header X-Real-IP $remote_addr` **覆写**该头（`deploy/cmb-nav.nginx.conf` 已写好），客户端自带的同名头会被丢弃，无法伪造；
-4. 数据目录 `DATA_DIR` 建议放在独立磁盘/备份目录，定期 `sqlite3 .backup`；
-5. 纯 HTTP 部署时会话 Cookie 不带 `Secure`；上 HTTPS 后可自行在 `server/auth.js` 的 `buildSessionCookie` 中加上。
+1. **Node 只监听回环**，对外统一走 nginx——Node 不碰特权端口；
+2. **必须开 `TRUST_PROXY=1`**，否则所有请求都被当成同一个 IP，登录节流会误锁全局；
+3. nginx 要用 `proxy_set_header X-Real-IP $remote_addr` **覆写**该头（示例已写好），
+   否则客户端自带值可伪造 IP 绕过限流。
+
+详细步骤、备份与升级流程见 [`deploy/README.md`](./deploy/README.md)。
+
+---
+
+## 安全设计（单人自用的合理强度）
+
+| 面 | 做法 |
+| --- | --- |
+| 口令存储 | `scrypt(password, salt, 64)`，明文不落盘，比较用 `timingSafeEqual` |
+| 会话 | `HMAC-SHA256` 签名的 token 装进 HttpOnly Cookie，30 天有效 |
+| 暴力破解 | 按 IP 计连续失败，5 次锁 5 分钟；失败响应加 300ms 延迟抬高成本 |
+| 路径穿越 | 静态托管做 `path.relative` 根目录校验，`..` 无法越界 |
+| 请求体积 | 上限 1MB（nginx 侧批量导入单独放宽） |
+| 凭据管理 | 仓库内零明文，全部走环境变量 |
+
+> 这是**单人自用**的强度，不是多租户产品：没有用户体系、没有 CSRF token、纯 HTTP 部署时 Cookie 不带 `Secure`。
+> 上 HTTPS 后建议自行在 `buildSessionCookie` 里补上。
 
 ---
 
 ## 常见问题
 
-**1. `npm run build` 报 `Cannot find module @rollup/rollup-win32-x64-msvc`**
+<details>
+<summary><b>为什么不能在浏览器里直接抓？</b></summary>
 
-npm 对 optionalDependencies 的已知缺陷（[npm/cli#4828](https://github.com/npm/cli/issues/4828)），由安装中断后残留半成品触发：
-`rm -rf node_modules package-lock.json && npm install`。
+数据源禁止浏览器跨域（预检返回 405 且无 `Access-Control-*` 响应头）。所以抓取只能放服务端——这正是本项目存在的理由。
+</details>
 
-**2. 为什么不直接在浏览器里抓净值？**
+<details>
+<summary><b>数据存在哪？换设备会丢吗？</b></summary>
 
-数据源禁止浏览器跨域（预检返回 405 且无 `Access-Control-*` 响应头），因此抓取必须放到服务端。
+存在服务器 SQLite（`DATA_DIR/cmb.db`）。手机与电脑访问同一地址即同一份数据。
+备份两种方式：「数据管理 → 导出 JSON」，或 `sqlite3 cmb.db ".backup 'backup.db'"`。
+</details>
 
-**3. 抓取提示缺少环境变量？**
+<details>
+<summary><b>为什么有的产品显示「未更新」？</b></summary>
 
-按提示补齐 `CMB_NAV_API_BASE` / `APP_ID` / `AUTH_KEY` / `BUSINESS_ID` 后重启。这四个参数需自行向数据源方获取，仓库不提供。
+它最新净值日期早于应披露日（上一工作日）。点「抓取最新净值」补数据，或手动录入。
+注意：周六早上看到「未更新」多半是正常的——应披露日是周五。
+</details>
 
-**4. 数据存在哪里？换设备会丢吗？**
+<details>
+<summary><b>构建报 <code>Cannot find module @rollup/rollup-win32-x64-msvc</code>？</b></summary>
 
-存在服务器 SQLite（`DATA_DIR/cmb.db`），手机与电脑访问同一地址共享同一份数据。定期用「数据管理 → 导出 JSON」或 `sqlite3 .backup` 备份。
+npm 对 optionalDependencies 的已知缺陷（[npm/cli#4828](https://github.com/npm/cli/issues/4828)），
+由安装中断后残留半成品触发：`rm -rf node_modules package-lock.json && npm install`。
+</details>
 
-**5. 为什么有的产品显示「未更新」？**
+<details>
+<summary><b>种子数据为什么是空的？</b></summary>
 
-其最新净值日期早于「应披露日」（上一工作日）。点「抓取最新净值」补数据，或手动录入。
+仓库里的 `seed-data.json` 只保留结构，`products` 为空。个人净值数据不该进版本库。
+需要预置就按 `src/data/seed.js` 文件头的结构自己填，或直接在页面上录入 / 抓取。
+</details>
 
-**6. `src/hooks/usePortfolio.js` 里为什么有 JSX？**
+<details>
+<summary><b>能改成别的产品 / 别的数据源吗？</b></summary>
 
-该文件包含返回 JSX 的 `PortfolioProvider`，故 `vite.config.js` 显式配了 `esbuild.loader = 'jsx'`，让 `.js` 也能写 JSX。
+可以。抓取适配层集中在 `server/cmb.js`（签名 + 两个查询接口 + 字段解析），
+换成别的数据源只需要替换这个文件里的 `fetchNavPoints` / `fetchProductName`，上层排期与存储逻辑不用动。
+</details>
 
 ---
 
-## 数据来源
+## 项目结构
 
-净值来自**服务端定时/手动抓取**（`source='cmb'`）或**用户手动录入/批量粘贴**（`source='manual'`）。
-同日期已存在手动点时，自动抓取不覆盖。种子数据（`seed-data.json`）默认为空模板，由使用者自行决定是否预置。
+```
+cmb-nav-assistant/
+├── server/                    # 后端，零 npm 依赖（~2400 行）
+│   ├── index.js               #   HTTP 路由 + 静态托管
+│   ├── db.js                  #   SQLite 封装 + schema 幂等迁移
+│   ├── auth.js                #   口令 / 会话 / 登录节流
+│   ├── cmb.js                 #   数据源适配层（签名 + 抓取 + 解析）
+│   ├── scheduler.js           #   定时 / 补抓 / 重试
+│   └── config.js              #   环境变量与 .env 解析
+├── src/                       # 前端，React 18（~5000 行）
+│   ├── lib/netvalue.js        #   年化算法（纯函数，可单测）
+│   ├── lib/holidays.js        #   节假日表
+│   ├── hooks/usePortfolio.js  #   全局状态 + 抓取轮询收敛
+│   ├── views/                 #   5 个页面
+│   └── components/            #   表格 / 对话框 / 走势图 / 登录门
+├── deploy/                    # systemd unit + nginx 配置 + 部署手册
+├── docs/                      # README 配图（SVG）
+├── .env.example               # 环境变量样例
+└── seed-data.json             # 种子数据（空模板）
+```
 
-## License
+---
 
-MIT
+## 路线图
+
+- [ ] 抓取时刻可在页面内配置（目前需改环境变量后重启）
+- [ ] 净值异常波动提醒（单日跌幅超过阈值）
+- [ ] 多套阈值分组（不同产品不同预警线）
+- [ ] 导出 CSV / 月报
+
+---
+
+<div align="center">
+
+**仅供个人学习与自建自用，不构成任何投资建议。**
+与任何金融机构无关；数据源参数需自行准备，请自觉控制抓取频率。
+
+MIT License © 2026 suixing
+
+</div>
