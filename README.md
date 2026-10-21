@@ -49,7 +49,7 @@
 
 **✅ 现在**
 
-- 每天 09:00 自动抓全部监控中产品
+- 每天定时自动抓全部监控中产品（默认 09:00，时间在页面里改）
 - 近 1/2/4 周年化自动算，带基准日与天数
 - 「未更新」自动标红，跌破阈值自动置顶
 - 电脑、手机、平板访问同一个地址，数据同一份
@@ -158,6 +158,7 @@ npm run build && node server/index.js        # 打开 http://127.0.0.1:9001
 09:15  还失败？再来一轮 —— 到此为止，不无限骚扰第三方接口
 ```
 
+- 抓取时刻在「数据管理 → 净值自动同步」里改，**保存即生效**，不用重启服务
 - 触发来源记在 `sync_log.trigger_kind`：`manual` / `schedule` / `catchup` / `retry`，事后可追溯
 - **重启不丢**：服务启动时若发现「已过今日抓取时刻、且今天还没成功跑过一次」，立即补抓一轮
 - **补抓幂等**：补抓成功后重启不会重复补
@@ -264,7 +265,7 @@ flowchart LR
 | `POST` | `/api/auth/login` | 口令登录，下发会话 Cookie |
 | `POST` | `/api/auth/logout` | 退出登录 |
 | `GET` | `/api/auth/me` | 当前登录状态 |
-| `GET` | `/api/state` | 全量数据（产品 + 净值 + 持仓 + 设置） |
+| `GET` | `/api/state` | 全量数据（产品 + 净值 + 持仓 + 设置 + 定时快照） |
 | `POST` | `/api/products` | 批量新增产品（支持多代码粘贴） |
 | `PATCH` / `DELETE` | `/api/products/:code` | 改产品 / 删产品 |
 | `POST` | `/api/products/:code/nav` | 批量写入净值（同日期覆盖） |
@@ -273,7 +274,7 @@ flowchart LR
 | `POST` | `/api/sync/names` | 同步产品名称 |
 | `GET` | `/api/sync/log` | 抓取历史（含触发来源） |
 | `POST` | `/api/import` | 导入 JSON / 种子数据 |
-| `PUT` | `/api/settings` | 阈值与提醒设置 |
+| `PUT` | `/api/settings` | 阈值、提醒与定时抓取设置（改时间后即时重排） |
 
 数据结构（`GET /api/state`）：
 
@@ -298,6 +299,17 @@ type AppState = {
     threshold: number;            // 默认 0.03
     staleReminder: boolean;
     alertBelowThreshold: boolean;
+    scheduleEnabled: boolean;    // 定时抓取开关
+    scheduleHour: number;        // 0–23
+    scheduleMinute: number;      // 0–59
+  };
+  schedule: {                    // 定时任务运行态（只读）
+    enabled: boolean;
+    hour: number;
+    minute: number;
+    time: string;                // "09:00"
+    timezone: string;            // "Asia/Shanghai"
+    nextRunAt: string | null;    // ISO；关闭时为 null
   };
 };
 ```
@@ -321,9 +333,11 @@ type AppState = {
 | `DATA_DIR` | | `<root>/data` | SQLite 与 `auth.json` 所在目录 |
 | `DIST_DIR` | | `<root>/dist` | 前端产物目录 |
 | `CMB_NAV_PASSWORD` | | 随机生成 | 首次启动口令，仅在无 `auth.json` 时生效 |
-| `CMB_NAV_SCHEDULE_HOUR` | | `9` | 定时抓取小时（0–23） |
-| `CMB_NAV_SCHEDULE_MINUTE` | | `0` | 定时抓取分钟（0–59） |
+| `CMB_NAV_SCHEDULE_HOUR` | | `9` | 定时抓取小时的**初始默认值**（0–23） |
+| `CMB_NAV_SCHEDULE_MINUTE` | | `0` | 定时抓取分钟的**初始默认值**（0–59） |
 | `CMB_NAV_RETRY_DELAY_MS` | | `300000,600000` | 重试延迟列表（毫秒），元素个数 = 重试轮数 |
+
+> 抓取时刻以页面设置为准；`CMB_NAV_SCHEDULE_*` 只在从未于页面上改过时提供出厂默认值。
 
 > 缺数据源参数时服务**照常启动**，录入、查看、统计都能用；
 > 只在触发抓取时返回「缺少环境变量 …」的可读提示。这是刻意设计——不要让配置问题连带把本地功能一起打死。
@@ -430,7 +444,6 @@ cmb-nav-assistant/
 ## 路线图
 
 - [ ] **多数据源适配**（其他银行理财、基金场外净值）——目前只支持招商银行
-- [ ] 抓取时刻可在页面内配置（目前需改环境变量后重启）
 - [ ] 净值异常波动提醒（单日跌幅超过阈值）
 - [ ] 多套阈值分组（不同产品不同预警线）
 - [ ] 导出 CSV / 月报

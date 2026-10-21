@@ -41,9 +41,11 @@ import {
   verifyPassword,
 } from './auth.js';
 import {
+  getScheduleSnapshot,
   getSyncStatus,
   isNameSyncRunning,
   isRunning,
+  reschedule,
   runSync,
   startScheduler,
   syncProductNames,
@@ -415,7 +417,7 @@ async function handleProtected(req, res, url) {
 
   if (pathname === '/api/state' && method === 'GET') {
     const state = getFullState();
-    ok(res, { ...state, sync: getSyncStatus() });
+    ok(res, { ...state, sync: getSyncStatus(), schedule: getScheduleSnapshot() });
     return;
   }
 
@@ -455,7 +457,33 @@ async function handleProtected(req, res, url) {
     if (body.alertBelowThreshold !== undefined) {
       patch.alertBelowThreshold = Boolean(body.alertBelowThreshold);
     }
-    ok(res, setSettings(patch));
+
+    // 定时抓取：开关 + 时刻。改完立刻重排定时器，无需重启服务。
+    let scheduleChanged = false;
+    if (body.scheduleEnabled !== undefined) {
+      patch.scheduleEnabled = Boolean(body.scheduleEnabled);
+      scheduleChanged = true;
+    }
+    if (body.scheduleHour !== undefined) {
+      const hour = Number(body.scheduleHour);
+      if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+        throw new HttpError(400, '抓取小时必须是 0 ~ 23 的整数');
+      }
+      patch.scheduleHour = hour;
+      scheduleChanged = true;
+    }
+    if (body.scheduleMinute !== undefined) {
+      const minute = Number(body.scheduleMinute);
+      if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+        throw new HttpError(400, '抓取分钟必须是 0 ~ 59 的整数');
+      }
+      patch.scheduleMinute = minute;
+      scheduleChanged = true;
+    }
+
+    const settings = setSettings(patch);
+    if (scheduleChanged) reschedule();
+    ok(res, settings);
     return;
   }
 

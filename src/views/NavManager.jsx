@@ -317,7 +317,7 @@ export default function NavManager({ notify }) {
               type="button"
               onClick={() => runSync(null, '抓取净值')}
               disabled={syncBusy}
-              title="抓取全部「监控中」产品的最新净值，范围与每天 21:30 的自动抓取一致"
+              title="抓取全部「监控中」产品的最新净值，范围与每日定时抓取一致（抓取时间可在「数据管理」页修改）"
               className="rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-sm font-bold text-brand-600 transition hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {syncBusy ? '抓取中…' : '抓取最新净值'}

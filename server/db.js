@@ -13,15 +13,30 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { config } from './config.js';
 
-/** 设置项默认值。 */
+/**
+ * 设置项默认值。
+ *
+ * 定时抓取时刻的默认值取自环境变量（CMB_NAV_SCHEDULE_HOUR / _MINUTE），
+ * 页面上的设置一旦保存就会覆盖它——环境变量只提供「出厂默认」。
+ */
 export const DEFAULT_SETTINGS = {
   threshold: 0.03,
   staleReminder: true,
   alertBelowThreshold: true,
+  scheduleEnabled: true,
+  scheduleHour: config.schedule.hour,
+  scheduleMinute: config.schedule.minute,
 };
 
 /** 设置项的合法键集合。 */
-const SETTING_KEYS = ['threshold', 'staleReminder', 'alertBelowThreshold'];
+const SETTING_KEYS = [
+  'threshold',
+  'staleReminder',
+  'alertBelowThreshold',
+  'scheduleEnabled',
+  'scheduleHour',
+  'scheduleMinute',
+];
 
 /** 单例数据库连接。 */
 let db = null;
@@ -475,8 +490,23 @@ export function deleteHolding(rawCode) {
  * ------------------------------------------------------------------ */
 
 /**
+ * 把任意值收敛为 [min, max] 内的整数；非法值返回兜底值。
+ * @param {unknown} raw
+ * @param {number} fallback
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
+ */
+function toIntInRange(raw, fallback, min, max) {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) return fallback;
+  return value;
+}
+
+/**
  * 读取设置（缺省补齐）。
- * @returns {{threshold:number, staleReminder:boolean, alertBelowThreshold:boolean}}
+ * @returns {{threshold:number, staleReminder:boolean, alertBelowThreshold:boolean,
+ *   scheduleEnabled:boolean, scheduleHour:number, scheduleMinute:number}}
  */
 export function getSettings() {
   const rows = getDb().prepare('SELECT key, value FROM settings').all();
@@ -499,13 +529,24 @@ export function getSettings() {
       map.alertBelowThreshold === undefined
         ? DEFAULT_SETTINGS.alertBelowThreshold
         : Boolean(map.alertBelowThreshold),
+    scheduleEnabled:
+      map.scheduleEnabled === undefined
+        ? DEFAULT_SETTINGS.scheduleEnabled
+        : Boolean(map.scheduleEnabled),
+    scheduleHour: toIntInRange(map.scheduleHour, DEFAULT_SETTINGS.scheduleHour, 0, 23),
+    scheduleMinute: toIntInRange(map.scheduleMinute, DEFAULT_SETTINGS.scheduleMinute, 0, 59),
   };
 }
 
 /**
  * 部分更新设置，返回更新后的完整设置。
- * @param {{threshold?:number,staleReminder?:boolean,alertBelowThreshold?:boolean}} patch
- * @returns {{threshold:number, staleReminder:boolean, alertBelowThreshold:boolean}}
+ *
+ * 取值范围校验放在调用方（HTTP 路由）做，这里只落库；
+ * 读取时仍会对越界值兜底，避免历史脏数据让调度器算出非法时刻。
+ *
+ * @param {{threshold?:number,staleReminder?:boolean,alertBelowThreshold?:boolean,
+ *   scheduleEnabled?:boolean, scheduleHour?:number, scheduleMinute?:number}} patch
+ * @returns {object} 更新后的完整设置
  */
 export function setSettings(patch = {}) {
   const database = getDb();

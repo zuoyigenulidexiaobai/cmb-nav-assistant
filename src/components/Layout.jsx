@@ -1,6 +1,6 @@
 import React from 'react';
 import { usePortfolio } from '../hooks/usePortfolio.js';
-import { fmtDateTime } from '../lib/format.js';
+import { fmtBeijingDateTime } from '../lib/format.js';
 
 /**
  * 应用导航项定义。App 与 Layout 共用。
@@ -118,7 +118,7 @@ export default function Layout({ view, onNavigate, badges = {}, children }) {
             上次更新：
             <br />
             <span className="font-semibold text-muted">
-              {lastRun ? fmtDateTime(String(lastRun.startedAt || '').slice(0, 19)) : '尚未同步'}
+              {lastRun ? fmtBeijingDateTime(lastRun.startedAt) : '尚未同步'}
             </span>
           </p>
           <p className="text-[11px] leading-relaxed text-faint">
@@ -143,7 +143,7 @@ export default function Layout({ view, onNavigate, badges = {}, children }) {
           <p className="px-4 pb-2 text-[11px] text-faint">
             上次更新：
             <span className="font-semibold text-muted">
-              {lastRun ? fmtDateTime(String(lastRun.startedAt || '').slice(0, 19)) : '尚未同步'}
+              {lastRun ? fmtBeijingDateTime(lastRun.startedAt) : '尚未同步'}
             </span>
           </p>
         </header>

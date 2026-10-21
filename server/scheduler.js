@@ -1,11 +1,11 @@
 /**
  * 定时抓取调度 + 抓取任务执行。
  *
- * - 每天 09:00（Asia/Shanghai，可经 CMB_NAV_SCHEDULE_HOUR / CMB_NAV_SCHEDULE_MINUTE 覆盖）
+ * - 每天在「设置」指定的时刻（Asia/Shanghai，默认 09:00，可在页面内修改并即时生效）
  *   抓取一次全部 active=1 的产品。
  * - 通过 setTimeout 递归计算「距下次执行的毫秒数」，避免 setInterval 的累积漂移。
  * - 启动时做 catch-up：若今日已过抓取时刻、且今日尚无成功的自动抓取，则立即补抓一轮
- *   （不阻塞服务启动），并把下次定时器指向明天 09:00。
+ *   （不阻塞服务启动），并把下次定时器指向明天的该时刻。
  * - 定时（schedule）/补抓（catchup）若本轮有产品失败，进入后台重试循环（最多 2 轮，
  *   延迟可经 CMB_NAV_RETRY_DELAY_MS 覆盖）；手动触发不自动重试。
  * - 全局互斥：同一时刻只允许一个抓取任务运行（定时与手动共用）；重试等待期间不占用该互斥标志。
@@ -17,6 +17,7 @@ import {
   getLastAutoRunStartedAt,
   getLastRun,
   getProduct,
+  getSettings,
   listActiveCodes,
   listProducts,
   patchProduct,
@@ -44,6 +45,9 @@ let namesRunning = false;
 
 /** 当前定时器句柄。 */
 let timer = null;
+
+/** 调度器是否已启动（reschedule 需要据此判断是否重新挂定时器）。 */
+let started = false;
 
 /** 待执行的重试定时器句柄。 */
 let retryTimer = null;
@@ -84,12 +88,31 @@ function triggerLabel(trigger) {
 }
 
 /**
+ * 读取当前生效的定时抓取配置。
+ *
+ * 来源是数据库 settings 表（页面可改、即时生效）；没被页面改过时，
+ * 默认值来自环境变量 CMB_NAV_SCHEDULE_HOUR / _MINUTE。
+ *
+ * @returns {{enabled:boolean, hour:number, minute:number}}
+ */
+export function getRuntimeSchedule() {
+  const settings = getSettings();
+  return {
+    enabled: settings.scheduleEnabled !== false,
+    hour: settings.scheduleHour,
+    minute: settings.scheduleMinute,
+  };
+}
+
+/**
  * 定时抓取时刻的展示文案（HH:MM，Asia/Shanghai）。
+ * @param {{hour:number, minute:number}} [plan] 省略则读取当前配置
  * @returns {string}
  */
-function scheduleTimeText() {
-  const hh = String(config.schedule.hour).padStart(2, '0');
-  const mm = String(config.schedule.minute).padStart(2, '0');
+function scheduleTimeText(plan) {
+  const target = plan || getRuntimeSchedule();
+  const hh = String(target.hour).padStart(2, '0');
+  const mm = String(target.minute).padStart(2, '0');
   return `${hh}:${mm}`;
 }
 
@@ -122,12 +145,14 @@ export function shanghaiDayKey(msOrIso) {
 /**
  * 距下一次定时抓取时刻（Asia/Shanghai）的毫秒数。
  *
- * 纯函数：仅做时间换算，不访问数据库或网络。
+ * 纯函数：除默认参数读取一次配置外，不访问数据库或网络。
  *
  * @param {number} [now] 当前毫秒时间戳，默认 Date.now()
+ * @param {{hour:number, minute:number}} [schedule] 定时时刻，省略则读取当前配置
  * @returns {number} 距下次执行的毫秒数（严格大于 0）
  */
-export function msUntilNextRun(now = Date.now()) {
+export function msUntilNextRun(now = Date.now(), schedule = null) {
+  const plan = schedule || getRuntimeSchedule();
   const current = Number.isFinite(now) ? now : Date.now();
   const shifted = current + SHANGHAI_OFFSET_MS; // 使 UTC 字段即等于上海挂钟时间
   const date = new Date(shifted);
@@ -135,13 +160,42 @@ export function msUntilNextRun(now = Date.now()) {
     date.getUTCFullYear(),
     date.getUTCMonth(),
     date.getUTCDate(),
-    config.schedule.hour,
-    config.schedule.minute,
+    plan.hour,
+    plan.minute,
     0,
     0,
   );
   if (target <= shifted) target += 24 * 60 * 60 * 1000;
   return target - shifted;
+}
+
+/**
+ * 下次定时抓取的时间戳；定时已关闭时返回 null。
+ * @param {number} [now]
+ * @returns {number|null} 毫秒时间戳
+ */
+export function getNextRunAt(now = Date.now()) {
+  const plan = getRuntimeSchedule();
+  if (!plan.enabled) return null;
+  return now + msUntilNextRun(now, plan);
+}
+
+/**
+ * 供 API 下发的调度快照。
+ * @param {number} [now]
+ * @returns {{enabled:boolean, hour:number, minute:number, timezone:string, nextRunAt:string|null}}
+ */
+export function getScheduleSnapshot(now = Date.now()) {
+  const plan = getRuntimeSchedule();
+  const next = plan.enabled ? now + msUntilNextRun(now, plan) : null;
+  return {
+    enabled: plan.enabled,
+    hour: plan.hour,
+    minute: plan.minute,
+    time: scheduleTimeText(plan),
+    timezone: config.timezone,
+    nextRunAt: next === null ? null : new Date(next).toISOString(),
+  };
 }
 
 /**
@@ -155,9 +209,11 @@ export function msUntilNextRun(now = Date.now()) {
  *
  * @param {number|string} now 当前毫秒时间戳或 ISO 字符串
  * @param {string|null} lastAutoRunStartedAt 最近一次成功自动抓取的 started_at（UTC ISO 字符串或 null）
+ * @param {{hour:number, minute:number}} [schedule] 定时时刻，省略则读取当前配置
  * @returns {boolean}
  */
-export function shouldCatchUp(now, lastAutoRunStartedAt) {
+export function shouldCatchUp(now, lastAutoRunStartedAt, schedule = null) {
+  const plan = schedule || getRuntimeSchedule();
   const nowMs = typeof now === 'number' ? now : Date.parse(String(now));
   if (!Number.isFinite(nowMs)) return false;
 
@@ -167,8 +223,8 @@ export function shouldCatchUp(now, lastAutoRunStartedAt) {
     date.getUTCFullYear(),
     date.getUTCMonth(),
     date.getUTCDate(),
-    config.schedule.hour,
-    config.schedule.minute,
+    plan.hour,
+    plan.minute,
     0,
     0,
   );
@@ -460,37 +516,78 @@ export function getSyncStatus() {
 }
 
 /**
- * 启动定时器（启动时按需补抓一轮，随后指向下次定时时刻）。
- * @param {(message:string)=>void} [log]
+ * 挂下一次定时器（每次调用都按当前配置重新计算间隔）。
+ *
+ * 定时关闭时不挂定时器，只留一条日志；开启/改时间后由 reschedule() 重新调用本函数。
  * @returns {void}
  */
-export function startScheduler(log) {
-  if (timer) return;
-  if (typeof log === 'function') logger = log;
-
-  // 启动补抓：若今日已过抓取时刻且今日尚无成功的自动抓取，则立即补抓（不阻塞启动）。
-  const lastAutoRunStartedAt = getLastAutoRunStartedAt();
-  if (shouldCatchUp(Date.now(), lastAutoRunStartedAt)) {
-    emitLog('[cmb-nav] 检测到今日定时抓取尚未执行，正在补抓…');
-    runSync({ trigger: 'catchup' }).catch((error) => {
-      console.error('[cmb-nav] 启动补抓异常：', error);
-    });
+function scheduleNext() {
+  const plan = getRuntimeSchedule();
+  if (!plan.enabled) {
+    emitLog('[cmb-nav] 定时抓取已关闭，不会自动抓取（可在「数据管理」页开启）');
+    return;
   }
 
-  const scheduleNext = () => {
-    const delay = msUntilNextRun();
-    timer = setTimeout(async () => {
+  const delay = msUntilNextRun(Date.now(), plan);
+  timer = setTimeout(async () => {
+    timer = null;
+    // 触发瞬间再读一次配置：等待期间若被关闭，这一轮跳过。
+    if (getRuntimeSchedule().enabled) {
       try {
         await runSync({ trigger: 'schedule' });
       } catch (error) {
         console.error('[cmb-nav] 定时抓取异常：', error);
       }
-      scheduleNext();
-    }, delay);
-    if (typeof timer.unref === 'function') timer.unref();
-    const minutes = Math.round(delay / 60000);
-    emitLog(`[cmb-nav] 下次定时抓取将在约 ${minutes} 分钟后（每天 ${scheduleTimeText()} ${config.timezone}）`);
-  };
+    }
+    scheduleNext();
+  }, delay);
+  if (typeof timer.unref === 'function') timer.unref();
+  const minutes = Math.round(delay / 60000);
+  emitLog(
+    `[cmb-nav] 下次定时抓取将在约 ${minutes} 分钟后（每天 ${scheduleTimeText(plan)} ${config.timezone}）`,
+  );
+}
+
+/**
+ * 按最新配置重排定时器（页面修改抓取时间或开关后调用）。
+ *
+ * 已在执行的抓取任务不受影响；仅替换「下一次触发」的时间点。
+ * 调度器尚未启动时什么都不做。
+ * @returns {void}
+ */
+export function reschedule() {
+  if (!started) return;
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  scheduleNext();
+}
+
+/**
+ * 启动定时器（启动时按需补抓一轮，随后指向下次定时时刻）。
+ * @param {(message:string)=>void} [log]
+ * @returns {void}
+ */
+export function startScheduler(log) {
+  if (started) return;
+  if (typeof log === 'function') logger = log;
+  started = true;
+
+  const plan = getRuntimeSchedule();
+
+  // 启动补抓：若今日已过抓取时刻且今日尚无成功的自动抓取，则立即补抓（不阻塞启动）。
+  // 定时关闭时不做补抓——用户关掉的就是「自动抓取」这件事本身。
+  if (plan.enabled) {
+    const lastAutoRunStartedAt = getLastAutoRunStartedAt();
+    if (shouldCatchUp(Date.now(), lastAutoRunStartedAt, plan)) {
+      emitLog('[cmb-nav] 检测到今日定时抓取尚未执行，正在补抓…');
+      runSync({ trigger: 'catchup' }).catch((error) => {
+        console.error('[cmb-nav] 启动补抓异常：', error);
+      });
+    }
+  }
+
   scheduleNext();
 }
 
@@ -499,6 +596,7 @@ export function startScheduler(log) {
  * @returns {void}
  */
 export function stopScheduler() {
+  started = false;
   if (timer) {
     clearTimeout(timer);
     timer = null;

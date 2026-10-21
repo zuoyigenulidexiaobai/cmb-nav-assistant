@@ -83,6 +83,29 @@ export function fmtDateTime(value) {
   return String(value).replace('T', ' ');
 }
 
+/** Asia/Shanghai 相对 UTC 的偏移（UTC+8，无夏令时）。 */
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * 把 UTC ISO 时间戳格式化为北京时间 `YYYY-MM-DD HH:mm`。
+ *
+ * 服务端存的都是 UTC ISO，直接用 fmtDateTime 截断会早 8 小时，
+ * 因此凡是展示「上次同步 / 下次抓取」这类时间都用本函数。
+ *
+ * @param {string|null|undefined} iso
+ * @returns {string}
+ */
+export function fmtBeijingDateTime(iso) {
+  if (!iso) return DASH;
+  const ms = Date.parse(String(iso));
+  if (!Number.isFinite(ms)) return DASH;
+  const shifted = new Date(ms + SHANGHAI_OFFSET_MS);
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(
+    shifted.getUTCDate(),
+  )} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}`;
+}
+
 /**
  * 数字或 `—`。
  * @param {number} value

@@ -58,6 +58,13 @@ function mapServerState(data) {
         typeof data?.settings?.threshold === 'number' ? data.settings.threshold : DEFAULT_THRESHOLD,
       staleReminder: data?.settings?.staleReminder !== false,
       alertBelowThreshold: data?.settings?.alertBelowThreshold !== false,
+      scheduleEnabled: data?.settings?.scheduleEnabled !== false,
+      scheduleHour: Number.isInteger(data?.settings?.scheduleHour)
+        ? data.settings.scheduleHour
+        : 9,
+      scheduleMinute: Number.isInteger(data?.settings?.scheduleMinute)
+        ? data.settings.scheduleMinute
+        : 0,
     },
   };
 }
@@ -72,6 +79,8 @@ export function PortfolioProvider({ children }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [error, setError] = useState('');
   const [serverSync, setServerSync] = useState({ running: false, lastRun: null });
+  /** 服务端定时抓取快照（是否启用 / 时刻 / 下次执行时间）。 */
+  const [serverSchedule, setServerSchedule] = useState(null);
 
   const seedSummary = useMemo(() => getSeedSummary(), []);
 
@@ -92,6 +101,7 @@ export function PortfolioProvider({ children }) {
       running: Boolean(data?.sync?.running),
       lastRun: data?.sync?.lastRun || null,
     });
+    setServerSchedule(data?.schedule || null);
     return data;
   }, []);
 
@@ -140,6 +150,7 @@ export function PortfolioProvider({ children }) {
     setAuthenticated(false);
     setState(createDefaultState());
     setServerSync({ running: false, lastRun: null });
+    setServerSchedule(null);
   }, []);
 
   /** 批量新增产品。 */
@@ -320,11 +331,19 @@ export function PortfolioProvider({ children }) {
       try {
         const settings = await api.saveSettings(patch);
         setState((prev) => ({ ...prev, settings }));
+        // 定时相关改动会改变「下次执行时间」，重新拉一次调度快照。
+        const touchesSchedule =
+          patch.scheduleEnabled !== undefined ||
+          patch.scheduleHour !== undefined ||
+          patch.scheduleMinute !== undefined;
+        if (touchesSchedule) await refresh();
+        return settings;
       } catch (err) {
         handleActionError(err);
+        return null;
       }
     },
-    [handleActionError],
+    [handleActionError, refresh],
   );
 
   /** 用外部对象整体替换状态（用于 JSON 导入），逐个推送到服务端。 */
@@ -487,6 +506,7 @@ export function PortfolioProvider({ children }) {
       error,
       authenticated,
       serverSync,
+      serverSchedule,
       // auth
       login,
       logout,
@@ -521,6 +541,7 @@ export function PortfolioProvider({ children }) {
       error,
       authenticated,
       serverSync,
+      serverSchedule,
       login,
       logout,
       refresh,

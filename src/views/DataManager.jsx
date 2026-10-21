@@ -6,7 +6,10 @@ import { usePortfolio } from '../hooks/usePortfolio.js';
 import { PageHeader } from '../components/common.jsx';
 import { downloadJson } from '../lib/storage.js';
 import { DEFAULT_THRESHOLD } from '../lib/netvalue.js';
-import { fmtDateTime } from '../lib/format.js';
+import { fmtBeijingDateTime, fmtDateTime } from '../lib/format.js';
+
+/** 两位补零（用于 HH:MM）。 */
+const pad2 = (value) => String(value).padStart(2, '0');
 
 /**
  * 数据管理视图：同步抓取 / 导出 / 导入 / 一键导入插件数据 / 清空 / 设置 / 退出登录。
@@ -25,6 +28,7 @@ export default function DataManager({ notify }) {
     stats,
     report,
     serverSync,
+    serverSchedule,
     syncAndWait,
     logout,
   } = usePortfolio();
@@ -40,6 +44,47 @@ export default function DataManager({ notify }) {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const lastRun = serverSync?.lastRun || null;
+
+  // 定时抓取设置（时间输入过程只改本地，失焦/回车才提交）
+  const [scheduleTimeText, setScheduleTimeText] = useState(null);
+  const [scheduleError, setScheduleError] = useState('');
+
+  const scheduleEnabled = serverSchedule ? serverSchedule.enabled : settings.scheduleEnabled;
+  const scheduleHour = serverSchedule ? serverSchedule.hour : settings.scheduleHour;
+  const scheduleMinute = serverSchedule ? serverSchedule.minute : settings.scheduleMinute;
+  const scheduleTime = `${pad2(scheduleHour)}:${pad2(scheduleMinute)}`;
+
+  /** 开启 / 关闭定时抓取。 */
+  const handleToggleSchedule = async (enabled) => {
+    const saved = await updateSettings({ scheduleEnabled: enabled });
+    if (saved) notify?.(enabled ? '已开启定时抓取' : '已关闭定时抓取', enabled ? 'success' : 'info');
+  };
+
+  /**
+   * 提交抓取时刻。
+   * 输入非法时回滚显示并提示；与当前值相同时不发起请求。
+   */
+  const commitScheduleTime = async (value) => {
+    const raw = String(value ?? '').trim();
+    const match = /^(\d{1,2}):(\d{2})$/.exec(raw);
+    if (!match) {
+      setScheduleTimeText(null);
+      setScheduleError('请选择 HH:MM 格式的时间');
+      return;
+    }
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (hour > 23 || minute > 59) {
+      setScheduleTimeText(null);
+      setScheduleError('时间需在 00:00 ~ 23:59 之间');
+      return;
+    }
+    setScheduleError('');
+    setScheduleTimeText(null);
+    if (hour === scheduleHour && minute === scheduleMinute) return;
+    const saved = await updateSettings({ scheduleHour: hour, scheduleMinute: minute });
+    if (saved) notify?.(`已改为每天 ${pad2(hour)}:${pad2(minute)} 自动抓取`, 'success');
+  };
 
   const totals = useMemo(
     () => ({
@@ -280,14 +325,60 @@ export default function DataManager({ notify }) {
           <div className="card p-4">
             <h2 className="text-sm font-black text-ink">净值自动同步</h2>
             <p className="mt-1 text-[11px] leading-relaxed text-muted">
-              服务器每天 21:30（北京时间）自动抓取全部监控中产品的净值。也可在此手动立即抓取。
+              {scheduleEnabled
+                ? `服务器每天 ${scheduleTime}（北京时间）自动抓取全部监控中产品的净值，改完时间即时生效。`
+                : '定时抓取当前已关闭，净值不会自动更新。'}
+              也可在此手动立即抓取。
             </p>
+
+            <div className="mt-3 rounded-xl border border-line p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-ink">每天定时抓取</p>
+                  <p className="text-[11px] text-muted">
+                    {scheduleEnabled
+                      ? `下次抓取：${fmtBeijingDateTime(serverSchedule?.nextRunAt)}`
+                      : '关闭后不会自动抓取，仍可手动触发'}
+                  </p>
+                </div>
+                <Switch
+                  checked={scheduleEnabled}
+                  onChange={(event) => handleToggleSchedule(event.target.checked)}
+                />
+              </div>
+
+              <div className="mt-3">
+                <TextField
+                  label="抓取时间（北京时间）"
+                  type="time"
+                  size="small"
+                  value={scheduleTimeText ?? scheduleTime}
+                  onChange={(event) => {
+                    setScheduleTimeText(event.target.value);
+                    if (scheduleError) setScheduleError('');
+                  }}
+                  onBlur={(event) => commitScheduleTime(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      commitScheduleTime(event.currentTarget.value);
+                    }
+                  }}
+                  disabled={!scheduleEnabled}
+                  error={Boolean(scheduleError)}
+                  sx={{ width: 200 }}
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{ step: 60 }}
+                  helperText={scheduleError || '失焦或回车生效'}
+                />
+              </div>
+            </div>
 
             <div className="mt-3 rounded-xl border border-line bg-slate-50/70 p-3 text-xs text-muted">
               <p>
                 上次同步：
                 <strong className="text-ink">
-                  {lastRun ? fmtDateTime(String(lastRun.startedAt || '').slice(0, 19)) : '—'}
+                  {lastRun ? fmtBeijingDateTime(lastRun.startedAt) : '—'}
                 </strong>
               </p>
               <p className="mt-1">

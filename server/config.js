@@ -13,8 +13,10 @@
  *   DIST_DIR         前端构建产物目录，默认 <root>/dist
  *   CMB_NAV_PASSWORD 首次启动时的初始登录口令；未设置则随机生成并打印
  *   CMB_NAV_TZ       定时任务时区标识，默认 Asia/Shanghai（仅用于展示与日志）
- *   CMB_NAV_SCHEDULE_HOUR    定时抓取小时（Asia/Shanghai 24 小时制），默认 9
- *   CMB_NAV_SCHEDULE_MINUTE  定时抓取分钟，默认 0
+ *   CMB_NAV_SCHEDULE_HOUR    定时抓取小时（Asia/Shanghai 24 小时制）的初始默认值，默认 9
+ *   CMB_NAV_SCHEDULE_MINUTE  定时抓取分钟的初始默认值，默认 0
+ *                   —— 抓取时刻可在页面「数据管理 → 净值自动同步」中修改并即时生效，
+ *                      页面保存过的值优先于这里的默认值。
  *   CMB_NAV_RETRY_DELAY_MS   定时/补抓失败后的自动重试延迟列表（毫秒，逗号分隔），默认 300000,600000
  *
  * 数据源参数（无默认值，必须由环境变量提供，见 .env.example）：
@@ -150,7 +152,12 @@ export const config = {
   sessionMaxAgeMs: 30 * 24 * 60 * 60 * 1000,
   /** 请求体大小上限：1MB。 */
   maxBodyBytes: 1024 * 1024,
-  /** 定时抓取时刻（Asia/Shanghai 24 小时制，默认 09:00）。 */
+  /**
+   * 定时抓取时刻的**初始默认值**（Asia/Shanghai 24 小时制，默认 09:00）。
+   *
+   * 实际生效时刻以数据库 settings 表为准（页面可改、即时生效）；
+   * 这里的值只在用户从未在页面上改过时作为兜底。
+   */
   schedule: {
     hour: readIntEnv('CMB_NAV_SCHEDULE_HOUR', 9, 0, 23),
     minute: readIntEnv('CMB_NAV_SCHEDULE_MINUTE', 0, 0, 59),
