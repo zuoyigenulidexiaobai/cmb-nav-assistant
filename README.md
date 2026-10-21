@@ -275,6 +275,9 @@ flowchart LR
 | `GET` | `/api/sync/log` | 抓取历史（含触发来源） |
 | `POST` | `/api/import` | 导入 JSON / 种子数据 |
 | `PUT` | `/api/settings` | 阈值、提醒与定时抓取设置（改时间后即时重排） |
+| `GET` | `/api/system/version` | 当前 / 最新版本（`?check=1` 时联网拉取） |
+| `GET` | `/api/system/update` | 自更新进度快照 |
+| `POST` | `/api/system/update` | 启动自更新（后台执行，完成后自动重启） |
 
 数据结构（`GET /api/state`）：
 
@@ -415,6 +418,17 @@ npm 对 optionalDependencies 的已知缺陷（[npm/cli#4828](https://github.com
 需要说明的是：只有这一层是招行专属的，业务层并没有写死银行。
 </details>
 
+<details>
+<summary><b>怎么更新到新版本？</b></summary>
+
+**页面按钮**：前提是部署目录由 `git clone` 得到。进入「数据管理 → 版本与更新」，
+点「检查更新」看有没有新提交，点「立即更新并重启」即自动完成拉取 → 构建 → 重启，
+构建失败会自动回滚到原提交并恢复旧产物。
+
+**手动**：`git pull` 后重新构建前端并重启进程即可。若目录不是 Git 仓库，
+页面会直接提示「无法一键更新」，不影响其他功能。
+</details>
+
 ---
 
 ## 项目结构
@@ -427,6 +441,7 @@ cmb-nav-assistant/
 │   ├── auth.js                #   口令 / 会话 / 登录节流
 │   ├── cmb.js                 #   招商银行适配层（SM4 签名 + 抓取 + 解析）
 │   ├── scheduler.js           #   定时 / 补抓 / 重试
+│   ├── updater.js             #   Git 自更新（拉取 → 构建 → 重启，失败回滚）
 │   └── config.js              #   环境变量与 .env 解析
 ├── src/                       # 前端，React 18（~5000 行）
 │   ├── lib/netvalue.js        #   年化算法（纯函数，可单测）

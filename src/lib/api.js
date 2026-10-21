@@ -105,4 +105,13 @@ export const api = {
     }),
   /** 一次性导入插件种子数据。 */
   importSeed: (seed) => request('POST', '/import', seed),
+  /**
+   * 查询版本信息。
+   * @param {boolean} [check] 是否联网检查远端（false 时只读本地已知版本）
+   */
+  getVersion: (check = false) => request('GET', `/system/version${check ? '?check=1' : ''}`),
+  /** 查询自更新进度。 */
+  updateStatus: () => request('GET', '/system/update'),
+  /** 启动自更新（后台执行，返回即表示已开始）。 */
+  startUpdate: () => request('POST', '/system/update'),
 };

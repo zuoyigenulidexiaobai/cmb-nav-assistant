@@ -50,6 +50,7 @@ import {
   startScheduler,
   syncProductNames,
 } from './scheduler.js';
+import { checkForUpdate, getUpdateState, isGitRepo, onRestart, startUpdate } from './updater.js';
 
 /** 静态资源 Content-Type 映射。 */
 const CONTENT_TYPES = {
@@ -506,6 +507,28 @@ async function handleProtected(req, res, url) {
     return;
   }
 
+  // ---- 版本与自更新 -------------------------------------------------------
+  // 当前/最新版本。带 ?check=1 时会联网拉取远端，否则只读本地已知引用。
+  if (pathname === '/api/system/version' && method === 'GET') {
+    const wantCheck = url.searchParams.get('check') === '1';
+    const result = await checkForUpdate({ fetch: wantCheck });
+    ok(res, { ...result, update: getUpdateState() });
+    return;
+  }
+
+  if (pathname === '/api/system/update' && method === 'GET') {
+    ok(res, { gitReady: isGitRepo(), update: getUpdateState() });
+    return;
+  }
+
+  if (pathname === '/api/system/update' && method === 'POST') {
+    if (!isGitRepo()) throw new HttpError(400, '当前部署目录不是 Git 仓库，无法自动更新');
+    if (isRunning()) throw new HttpError(409, '正在抓取净值，请等这一轮结束后再更新');
+    const { started, state: snapshot } = startUpdate();
+    ok(res, { started, update: snapshot });
+    return;
+  }
+
   // 从招行同步产品名称。
   // 与 /api/sync（抓净值）互不阻塞：一个写净值点、一个写产品名。
   // 产品数量有限（每只 1 次请求 + 节流间隔），因此直接同步返回结果，前端无需轮询。
@@ -687,6 +710,13 @@ function bootstrap() {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+
+  // 页面点「立即更新」并构建成功后，由 updater 触发这里：退出进程，
+  // 交给 systemd（Restart=always）以新代码重新拉起。未装 systemd 时也可手动重启。
+  onRestart(() => {
+    log('[cmb-nav] 更新完成，正在重启进程…');
+    setTimeout(shutdown, 500).unref();
+  });
 
   return server;
 }

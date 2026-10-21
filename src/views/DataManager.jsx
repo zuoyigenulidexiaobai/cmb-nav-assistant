@@ -4,6 +4,7 @@ import Switch from '@mui/material/Switch';
 import Alert from '@mui/material/Alert';
 import { usePortfolio } from '../hooks/usePortfolio.js';
 import { PageHeader } from '../components/common.jsx';
+import VersionCard from '../components/VersionCard.jsx';
 import { downloadJson } from '../lib/storage.js';
 import { DEFAULT_THRESHOLD } from '../lib/netvalue.js';
 import { fmtBeijingDateTime, fmtDateTime } from '../lib/format.js';
@@ -409,6 +410,8 @@ export default function DataManager({ notify }) {
               </Alert>
             ) : null}
           </div>
+
+          <VersionCard notify={notify} />
 
           <div className="card p-4">
             <h2 className="text-sm font-black text-ink">访问与账号</h2>
