@@ -14,8 +14,9 @@ yarn-error.log*
 !.env.example
 
 # 运行时数据（SQLite 库、auth.json）与日志
-data/
-logs/
+# 注意：必须锚定根目录，否则会误伤 src/data/ 下的源码
+/data/
+/logs/
 *.log
 *.db
 *.db-wal
