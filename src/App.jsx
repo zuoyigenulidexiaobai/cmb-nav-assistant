@@ -5,6 +5,7 @@ import Layout from './components/Layout.jsx';
 import Dashboard from './views/Dashboard.jsx';
 import NavManager from './views/NavManager.jsx';
 import TrendView from './views/TrendView.jsx';
+import BuyCheck from './views/BuyCheck.jsx';
 import HoldingsView from './views/HoldingsView.jsx';
 import DataManager from './views/DataManager.jsx';
 import { usePortfolio } from './hooks/usePortfolio.js';
@@ -39,6 +40,7 @@ export default function App() {
         {view === 'dashboard' ? <Dashboard onNavigate={setView} notify={notify} /> : null}
         {view === 'nav' ? <NavManager notify={notify} onNavigate={setView} /> : null}
         {view === 'trend' ? <TrendView notify={notify} onNavigate={setView} /> : null}
+        {view === 'buycheck' ? <BuyCheck notify={notify} onNavigate={setView} /> : null}
         {view === 'holdings' ? <HoldingsView notify={notify} onNavigate={setView} /> : null}
         {view === 'data' ? <DataManager notify={notify} onNavigate={setView} /> : null}
       </Layout>

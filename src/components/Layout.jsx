@@ -9,6 +9,7 @@ export const NAV_ITEMS = [
   { key: 'dashboard', label: '概览', hint: '监控总览' },
   { key: 'nav', label: '净值管理', hint: '录入与维护' },
   { key: 'trend', label: '净值走势', hint: '多产品对比' },
+  { key: 'buycheck', label: '买前体检', hint: '涨过头预警' },
   { key: 'holdings', label: '持仓收益', hint: '份额与收益' },
   { key: 'data', label: '数据管理', hint: '导入导出' },
 ];

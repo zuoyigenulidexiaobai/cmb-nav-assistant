@@ -124,3 +124,37 @@ export function trendClass(value) {
   if (!Number.isFinite(value) || value === 0) return 'text-muted';
   return value > 0 ? 'text-profit' : 'text-loss';
 }
+
+/**
+ * 带正负号的短日期：`2026-10-16` → `10-16`，空值给 `—`。
+ *
+ * 与 `fmtShortDate` 的区别：本函数对 `null / undefined / ''` 一律返回 `—`，
+ * 便于在表格的括号里直接拼接（例如 `+2.31%（10-16）`）。
+ *
+ * @param {string|null|undefined} value ISO 日期
+ * @returns {string}
+ */
+export function fmtMonthDay(value) {
+  if (!value) return DASH;
+  return fmtShortDate(value);
+}
+
+/**
+ * 涨跌箭头：涨 `▲`、跌 `▼`、平 `—`。
+ * @param {number} value 小数形式
+ * @returns {string}
+ */
+export function trendArrow(value) {
+  if (!Number.isFinite(value) || value === 0) return '—';
+  return value > 0 ? '▲' : '▼';
+}
+
+/**
+ * 把 0-100 的分数截断为整数并带上限保护。
+ * @param {number} value
+ * @returns {number}
+ */
+export function fmtScore(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
